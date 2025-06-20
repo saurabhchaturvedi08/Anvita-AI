@@ -27,6 +27,6 @@
 - Docker + Docker Compose
 - AWS CLI configured
 - Node.js + Python 3.9+
-- AWS account with Bedrock + OpenSearch access
+- AWS account with Bedrock + OpenSearch 
 
 
