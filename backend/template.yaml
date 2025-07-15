@@ -1,166 +1,43 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Smart Meeting Summarizer & Query Backend
 
 Globals:
   Function:
     Runtime: python3.11
-    Timeout: 900
-    MemorySize: 1024
+    Timeout: 10
+
+Parameters:
+  BucketName:
+    Type: String
+  MaxFileSizeMB:
+    Type: Number
+    Default: 10
+  AllowedFileTypes:
+    Type: String
+    Default: image/jpeg,image/png,application/pdf
 
 Resources:
-
-  # 1. Cognito User Pool (for optional auth)
-  UserPool:
-    Type: AWS::Cognito::UserPool
-    Properties:
-      UserPoolName: SmartSummarizerUserPool
-      AutoVerifiedAttributes: [email]
-
-  # 2. S3 Buckets
-  InputBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "${AWS::StackName}-input"
-  ProcessedBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "${AWS::StackName}-processed"
-
-  # 3. DynamoDB Table (user history & metadata)
-  FilesTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub "${AWS::StackName}-Files"
-      AttributeDefinitions:
-        - AttributeName: userId
-          AttributeType: S
-        - AttributeName: fileId
-          AttributeType: S
-      KeySchema:
-        - AttributeName: userId
-          KeyType: HASH
-        - AttributeName: fileId
-          KeyType: RANGE
-      BillingMode: PAY_PER_REQUEST
-
-  # 4. OpenSearch Serverless Collection created manually or via CloudFormation
-  #    (Not shown here; configure via AWS Console and note endpoint)
-
-  # 5. UploadHandler: presigned URL & S3-URL acceptance
-  UploadHandler:
+  S3UploadFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers/upload_handler/app.lambda_handler
-      CodeUri: .
+      Handler: app.lambda_handler
+      CodeUri: src/upload_handler/ 
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+          MAX_FILE_SIZE_MB: !Ref MaxFileSizeMB
+          ALLOWED_FILE_TYPES: !Ref AllowedFileTypes
       Policies:
         - S3CrudPolicy:
-            BucketName: !Ref InputBucket
-        - DynamoDBCrudPolicy:
-            TableName: !Ref FilesTable
-      Environment:
-        Variables:
-          INPUT_BUCKET: !Ref InputBucket
-          FILES_TABLE: !Ref FilesTable
+            BucketName: !Ref BucketName
       Events:
-        ApiUpload:
+        UploadApi:
           Type: Api
           Properties:
-            Path: /upload
-            Method: post
-
-  # 6. SummarizerHandler: triggered by S3 upload
-  SummarizerHandler:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: handlers/summarizer_handler/app.lambda_handler
-      CodeUri: .
-      Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref InputBucket
-        - S3CrudPolicy:
-            BucketName: !Ref ProcessedBucket
-        - AWSLambdaBasicExecutionRole
-      Environment:
-        Variables:
-          INPUT_BUCKET: !Ref InputBucket
-          PROCESSED_BUCKET: !Ref ProcessedBucket
-      Events:
-        OnFileUpload:
-          Type: S3
-          Properties:
-            Bucket: !Ref InputBucket
-            Events: s3:ObjectCreated:*
-
-  # 7. VectorIngestorHandler: triggered by EventBridge from Summarizer
-  VectorIngestorHandler:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: handlers/vector_ingestor_handler/app.lambda_handler
-      CodeUri: .
-      Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref ProcessedBucket
-        - AWSLambdaBasicExecutionRole
-      Environment:
-        Variables:
-          PROCESSED_BUCKET: !Ref ProcessedBucket
-          OPENSEARCH_HOST: https://<your-opensearch-endpoint>
-          OPENSEARCH_INDEX: meeting-index
-          AWS_REGION: !Ref AWS::Region
-      Events:
-        OnSummaryCreated:
-          Type: S3
-          Properties:
-            Bucket: !Ref ProcessedBucket
-            Events: s3:ObjectCreated:*
-            Filter:
-              S3Key:
-                Rules:
-                  - Name: suffix
-                    Value: "_summary.json"
-
-  # 8. QueryHandler: API for RAG queries
-  QueryHandler:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: handlers/query_handler/app.lambda_handler
-      CodeUri: .
-      Policies:
-        - AWSLambdaBasicExecutionRole
-      Environment:
-        Variables:
-          OPENSEARCH_HOST: https://<your-opensearch-endpoint>
-          OPENSEARCH_INDEX: meeting-index
-          BEDROCK_MODEL: "anthropic.claude-3-sonnet-20240229-v1:0"
-      Events:
-        ApiQuery:
-          Type: Api
-          Properties:
-            Path: /query
-            Method: post
-
-  # 9. NotifierHandler: API for sending summary emails
-  NotifierHandler:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: handlers/notifier_handler/app.lambda_handler
-      CodeUri: .
-      Policies:
-        - SESCrudPolicy: {}
-        - S3ReadPolicy:
-            BucketName: !Ref ProcessedBucket
-      Environment:
-        Variables:
-          PROCESSED_BUCKET: !Ref ProcessedBucket
-          SENDER_EMAIL: "verified@yourdomain.com"
-      Events:
-        ApiNotify:
-          Type: Api
-          Properties:
-            Path: /notify
+            Path: /generate-upload-url
             Method: post
 
 Outputs:
-  ApiUrl:
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Stage"
+  UploadApiUrl:
+    Description: "API Endpoint"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/generate-upload-url"

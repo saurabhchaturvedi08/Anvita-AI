@@ -5,3 +5,16 @@ Meeting Transcript:
 {transcript}
 
 Assistant:"""
+
+
+
+def get_qa_prompt(user_query, context_chunks):
+    context_text = "\n\n".join(context_chunks)
+    return f"""Human: Answer the question below using only the information provided.
+
+Context:
+{context_text}
+
+Question: {user_query}
+
+Assistant:"""
