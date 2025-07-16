@@ -1,4 +1,4 @@
-import { getPresignedUploadUrl, uploadFileToS3 } from "../api/s3UploadApi";
+import { getPresignedUploadUrl, uploadFileToS3 } from "../api/s3UploadAPI";
 
 /**
  * Handles the full upload flow:

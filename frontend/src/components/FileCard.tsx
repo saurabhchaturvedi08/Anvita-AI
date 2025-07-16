@@ -90,6 +90,22 @@ export default function FileCard({ file, onViewSummary }: FileCardProps) {
   return (
     <>
       <div className="bg-white rounded-xl border border-gray-200 hover:border-gray-300 shadow-sm hover:shadow-md transition-all duration-200 p-6">
+        {/* File Preview/Link */}
+        {file.publicUrl && (
+          <div className="mb-4">
+            {file.type.startsWith('image/') ? (
+              <img src={file.publicUrl} alt={file.name} className="max-h-48 rounded-lg mx-auto" />
+            ) : file.type.startsWith('audio/') ? (
+              <audio controls src={file.publicUrl} className="w-full mt-2" />
+            ) : file.type.startsWith('video/') ? (
+              <video controls src={file.publicUrl} className="w-full max-h-64 mt-2 rounded-lg" />
+            ) : (
+              <a href={file.publicUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                View/Download File
+              </a>
+            )}
+          </div>
+        )}
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center space-x-3">

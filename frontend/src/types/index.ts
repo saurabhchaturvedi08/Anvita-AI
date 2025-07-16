@@ -11,6 +11,7 @@ export interface FileUpload {
   duration?: number;
   userId?: string;
   isPublic?: boolean;
+  publicUrl?: string;
 }
 
 export interface QueryResult {

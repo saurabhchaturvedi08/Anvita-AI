@@ -21,6 +21,8 @@ function AppContent() {
   const [files, setFiles] = useState<FileUpload[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileUpload | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  // Track files uploaded in the current session only
+  const [sessionFiles, setSessionFiles] = useState<FileUpload[]>([]);
   
   const { isGuest } = useAuth();
 
@@ -42,16 +44,31 @@ function AppContent() {
     }
   };
 
+  // Only add to sessionFiles, not all files, for upload page
   const handleFileUploaded = (newFile: FileUpload) => {
     setFiles(prev => [newFile, ...prev]);
-    
-    if (currentView === 'upload') {
-      setCurrentView('dashboard');
-    }
+    setSessionFiles(prev => [newFile, ...prev]);
   };
 
   const handleViewSummary = (file: FileUpload) => {
     setSelectedFile(file);
+  };
+
+  // Simulate processing/generating summary for a file
+  const handleProcessFile = async (file: FileUpload) => {
+    // Simulate API call to process file and get summary
+    const response = await apiClient.getSummary(file.id);
+    if (response.success && response.data) {
+      const updatedFile: FileUpload = {
+        ...file,
+        summary: response.data.summary,
+        transcription: response.data.transcription,
+        status: 'completed',
+        progress: 100,
+      };
+      setSessionFiles(prev => prev.map(f => f.id === file.id ? updatedFile : f));
+      setFiles(prev => prev.map(f => f.id === file.id ? updatedFile : f));
+    }
   };
 
   const renderContent = () => {
@@ -76,6 +93,37 @@ function AppContent() {
               )}
             </div>
             <FileUploader onFileUploaded={handleFileUploaded} />
+            {/* Show only session files below uploader */}
+            {sessionFiles.length > 0 && (
+              <div className="mt-8">
+                <h3 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Your Uploaded Files (This Session)</h3>
+                <div className="space-y-6">
+                  {sessionFiles.map(file => (
+                    <div key={file.id}>
+                      <FileCard file={file} onViewSummary={handleViewSummary} />
+                      {file.status !== 'completed' && (
+                        <button
+                          className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                          onClick={() => handleProcessFile(file)}
+                        >
+                          {file.status === 'processing' ? 'Processing...' : 'Generate Summary'}
+                        </button>
+                      )}
+                      {file.status === 'completed' && file.summary && (
+                        <div className="mt-2">
+                          <button
+                            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                            onClick={() => handleViewSummary(file)}
+                          >
+                            View Full Summary / Ask Questions
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         );
 

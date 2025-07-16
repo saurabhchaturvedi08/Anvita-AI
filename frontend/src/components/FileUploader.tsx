@@ -48,7 +48,7 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
   }, []);
 
   const validateFile = (file: File): string | null => {
-    const maxSize = 100 * 1024 * 1024; // 100MB
+    const maxSize = 100 * 1024 * 1024;
     const allowedTypes = [
       'audio/mpeg', 'audio/wav', 'audio/aac', 'audio/ogg',
       'video/mp4', 'video/avi', 'video/mov', 'video/wmv',
@@ -60,9 +60,9 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
     return null;
   };
 
-  const processFiles = async (files: FileList) => {
+  const processFiles = async (files: File[]) => {
     setError(null);
-    const fileArray = Array.from(files);
+    const fileArray = files;
 
     for (const file of fileArray) {
       const validationError = validateFile(file);
@@ -108,7 +108,8 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
           type: file.type,
           status: 'completed',
           progress: 100,
-          uploadedAt: new Date()
+          uploadedAt: new Date(),
+          publicUrl: presigned.publicUrl
         });
 
         setTimeout(() => {
@@ -135,13 +136,15 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
     e.preventDefault();
     setIsDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processFiles(e.dataTransfer.files);
+      // Only process the first file
+      processFiles([e.dataTransfer.files[0]]);
     }
   }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.length) {
-      processFiles(e.target.files);
+      // Only process the first file
+      processFiles([e.target.files[0]]);
     }
   };
 
@@ -264,13 +267,12 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
             <p className="text-sm text-gray-500">Supported: Audio, Video, PDF, DOCX up to 100MB</p>
             <label htmlFor="file-upload" className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl">
               <Upload className="w-4 h-4 inline mr-2" />
-              Choose Files
+              Choose File
             </label>
             <input
               id="file-upload"
               type="file"
               className="hidden"
-              multiple
               accept="audio/*,video/*,text/*,.pdf,.doc,.docx"
               onChange={handleFileSelect}
             />
