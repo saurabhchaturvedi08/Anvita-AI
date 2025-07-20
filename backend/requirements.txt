@@ -1,2 +1,7 @@
 boto3
 requests
+PyMuPDF
+pytesseract
+Pillow
+python-docx
+textract

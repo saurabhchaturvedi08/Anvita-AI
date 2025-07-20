@@ -8,7 +8,17 @@ s3 = boto3.client('s3')
 
 BUCKET_NAME = os.environ.get('BUCKET_NAME')
 MAX_SIZE_MB = int(os.environ.get('MAX_FILE_SIZE_MB', '10'))
-ALLOWED_TYPES = set(os.environ.get('ALLOWED_FILE_TYPES', '').split(','))
+# Supported file types for upload and extraction
+SUPPORTED_MIME_TYPES = {
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',  # .docx
+    'text/plain',
+    'application/msword',  # .doc
+    'application/rtf',     # .rtf
+    'application/vnd.oasis.opendocument.text',  # .odt
+}
+
+ALLOWED_TYPES = set(os.environ.get('ALLOWED_FILE_TYPES', '').split(',')) or SUPPORTED_MIME_TYPES
 
 def lambda_handler(event, context):
     try:

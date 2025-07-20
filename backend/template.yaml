@@ -14,7 +14,8 @@ Parameters:
     Default: 10
   AllowedFileTypes:
     Type: String
-    Default: image/jpeg,image/png,application/pdf
+    # Supported: PDF, DOCX, DOC, TXT, RTF, ODT
+    Default: image/jpeg,image/png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,text/plain,application/rtf,application/vnd.oasis.opendocument.text
 
 Resources:
   S3UploadFunction:
@@ -36,6 +37,45 @@ Resources:
           Properties:
             Path: /generate-upload-url
             Method: post
+  ExtractTextFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/extract_loader/app.lambda_handler
+      CodeUri: .
+      Runtime: python3.11
+      Timeout: 30
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref BucketName
+      Layers:
+        # Tesseract OCR Lambda Layer (region-agnostic)
+        - !Sub arn:aws:lambda:${AWS::Region}:764866452798:layer:tesseract-ocr:5
+      Events:
+        S3DocumentUpload:
+          Type: S3
+          Properties:
+            Bucket: !Ref BucketName
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: uploads/
+                  - Name: suffix
+                    Value: .pdf
+                  - Name: suffix
+                    Value: .docx
+                  - Name: suffix
+                    Value: .doc
+                  - Name: suffix
+                    Value: .txt
+                  - Name: suffix
+                    Value: .rtf
+                  - Name: suffix
+                    Value: .odt
 
 Outputs:
   UploadApiUrl:
