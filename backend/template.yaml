@@ -76,6 +76,71 @@ Resources:
                     Value: .rtf
                   - Name: suffix
                     Value: .odt
+  EmbedTextFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/extract_loader/embed_text.lambda_handler
+      CodeUri: .
+      Runtime: python3.11
+      Timeout: 30
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref BucketName
+      Events:
+        S3TextUpload:
+          Type: S3
+          Properties:
+            Bucket: !Ref BucketName
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: texts/
+                  - Name: suffix
+                    Value: .txt
+  QALambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/extract_loader/qa.lambda_handler
+      CodeUri: .
+      Runtime: python3.11
+      Timeout: 30
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref BucketName
+        # Add OpenSearch permissions as needed
+      Events:
+        QAApi:
+          Type: Api
+          Properties:
+            Path: /qa
+            Method: post
+  SummarizeLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/extract_loader/summarize.lambda_handler
+      CodeUri: .
+      Runtime: python3.11
+      Timeout: 30
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref BucketName
+      Events:
+        SummarizeApi:
+          Type: Api
+          Properties:
+            Path: /summarize
+            Method: get
 
 Outputs:
   UploadApiUrl:
