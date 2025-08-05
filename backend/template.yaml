@@ -7,7 +7,7 @@ Globals:
     Timeout: 10
 
 Parameters:
-  BucketName:
+  S3Bucket:
     Type: String
   MaxFileSizeMB:
     Type: Number
@@ -16,125 +16,229 @@ Parameters:
     Type: String
     # Supported: PDF, DOCX, DOC, TXT, RTF, ODT
     Default: image/jpeg,image/png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,text/plain,application/rtf,application/vnd.oasis.opendocument.text
+  OpenSearchDomainName:
+    Type: String
+  OpenSearchEndpoint:
+    Type: String
+  OpenSearchIndex:
+    Type: String
+    Default: "documents"
 
 Resources:
-  S3UploadFunction:
+  # S3 Bucket for file storage
+  # S3Bucket:
+    # Type: AWS::S3::Bucket
+    # Properties:
+    #   BucketName: !Ref BucketName
+    #   PublicAccessBlockConfiguration:
+    #     BlockPublicAcls: true
+    #     BlockPublicPolicy: true
+    #     IgnorePublicAcls: true
+    #     RestrictPublicBuckets: true
+    #   CorsConfiguration:
+    #     CorsRules:
+    #       - AllowedHeaders: ['*']
+    #         AllowedMethods: [GET, PUT, POST, DELETE, HEAD]
+    #         AllowedOrigins: ['*']
+    #         MaxAge: 3000
+
+  # # OpenSearch Domain for Vector Storage
+  # OpenSearchDomain:
+    # Type: AWS::OpenSearchService::Domain
+    # Properties:
+    #   DomainName: !Ref OpenSearchDomainName
+    #   EngineVersion: "OpenSearch_1.0"
+    #   ClusterConfig:
+    #     InstanceType: "t3.small.elasticsearch"
+    #     InstanceCount: 1
+    #   EBSOptions:
+    #     EBSEnabled: true
+    #     VolumeType: "gp2"
+    #     VolumeSize: 10
+    #   AccessPolicies:
+    #     Version: "2012-10-17"
+    #     Statement:
+    #       - Effect: Allow
+    #         Principal:
+    #           AWS: "*"
+    #         Action: "es:*"
+    #         Resource: !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*"
+    #   EncryptionAtRestOptions:
+    #     Enabled: true
+    #   NodeToNodeEncryptionOptions:
+    #     Enabled: true
+    #   DomainEndpointOptions:
+    #     EnforceHTTPS: true
+    #     TLSSecurityPolicy: "Policy-Min-TLS-1-0-2019-07"
+
+  S3DocumentUploadFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.lambda_handler
       CodeUri: src/upload_handler/ 
       Environment:
         Variables:
-          BUCKET_NAME: !Ref BucketName
+          BUCKET_NAME: !Ref S3Bucket
           MAX_FILE_SIZE_MB: !Ref MaxFileSizeMB
           ALLOWED_FILE_TYPES: !Ref AllowedFileTypes
       Policies:
         - S3CrudPolicy:
-            BucketName: !Ref BucketName
+            BucketName: !Ref S3Bucket
       Events:
         UploadApi:
           Type: Api
           Properties:
             Path: /generate-upload-url
             Method: post
+
   ExtractTextFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: src/extract_loader/app.lambda_handler
-      CodeUri: .
+      Handler: extract_loader.lambda_handler
+      CodeUri: src/extract_loader/
       Runtime: python3.11
       Timeout: 30
       Environment:
         Variables:
-          BUCKET_NAME: !Ref BucketName
+          BUCKET_NAME: !Ref S3Bucket
+          OPENSEARCH_HOST: !Sub "${OpenSearchEndpoint}.${AWS::Region}.es.amazonaws.com"
       Policies:
         - S3CrudPolicy:
-            BucketName: !Ref BucketName
-      Layers:
-        # Tesseract OCR Lambda Layer (region-agnostic)
-        - !Sub arn:aws:lambda:${AWS::Region}:764866452798:layer:tesseract-ocr:5
-      Events:
-        S3DocumentUpload:
-          Type: S3
-          Properties:
-            Bucket: !Ref BucketName
-            Events: s3:ObjectCreated:*
-            Filter:
-              S3Key:
-                Rules:
-                  - Name: prefix
-                    Value: uploads/
-                  - Name: suffix
-                    Value: .pdf
-                  - Name: suffix
-                    Value: .docx
-                  - Name: suffix
-                    Value: .doc
-                  - Name: suffix
-                    Value: .txt
-                  - Name: suffix
-                    Value: .rtf
-                  - Name: suffix
-                    Value: .odt
+            BucketName: !Ref S3Bucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpGet
+                - es:ESHttpPost
+                - es:ESHttpPut
+                - es:ESHttpDelete
+              Resource: !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*"
+
+      # Layers:
+      #   # Tesseract OCR Lambda Layer (region-agnostic)
+      #   - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:tesseract-ocr:1"
+      # Events:
+      #   S3DocumentUpload:
+      #     Type: S3
+      #     Properties:
+      #       Bucket: !Ref S3Bucket
+      #       Events: s3:ObjectCreated:*
+      #       Filter:
+      #         S3Key:
+      #           Rules:
+      #             - Name: prefix
+      #               Value: uploads/
+      #             - Name: suffix
+      #               Value: .pdf
+      #             - Name: suffix
+      #               Value: .docx
+      #             - Name: suffix
+      #               Value: .doc
+      #             - Name: suffix
+      #               Value: .txt
+      #             - Name: suffix
+      #               Value: .rtf
+      #             - Name: suffix
+      #               Value: .odt
+
   EmbedTextFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: src/extract_loader/embed_text.lambda_handler
-      CodeUri: .
+      Handler: embedding_handler.lambda_handler
+      CodeUri: src/embedding_handler/
       Runtime: python3.11
-      Timeout: 30
+      Timeout: 60
       Environment:
         Variables:
-          BUCKET_NAME: !Ref BucketName
+          BUCKET_NAME: !Ref S3Bucket
+          BEDROCK_EMBEDDING_MODEL: "amazon.titan-embed-text-v1"
+          BEDROCK_LLM_MODEL: "anthropic.claude-3-sonnet-20240229-v1:0"
+          OPENSEARCH_HOST: !Sub "${OpenSearchEndpoint}.${AWS::Region}.es.amazonaws.com"
+          OPENSEARCH_INDEX: "documents"
       Policies:
         - S3CrudPolicy:
-            BucketName: !Ref BucketName
-      Events:
-        S3TextUpload:
-          Type: S3
-          Properties:
-            Bucket: !Ref BucketName
-            Events: s3:ObjectCreated:*
-            Filter:
-              S3Key:
-                Rules:
-                  - Name: prefix
-                    Value: texts/
-                  - Name: suffix
-                    Value: .txt
+            BucketName: !Ref S3Bucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - es:ESHttpGet
+                - es:ESHttpPost
+                - es:ESHttpPut
+                - es:ESHttpDelete
+              Resource: !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*"
+
+      # Events:
+      #   S3TextUpload:
+      #     Type: S3
+      #     Properties:
+      #       Bucket: !Ref S3Bucket
+      #       Events: s3:ObjectCreated:*
+      #       Filter:
+      #         S3Key:
+      #           Rules:
+      #             - Name: prefix
+      #               Value: texts/
+      #             - Name: suffix
+      #               Value: .txt
+
   QALambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: src/extract_loader/qa.lambda_handler
-      CodeUri: .
+      Handler: query_handler.lambda_handler
+      CodeUri: src/query_handler/
       Runtime: python3.11
       Timeout: 30
       Environment:
         Variables:
-          BUCKET_NAME: !Ref BucketName
+          BUCKET_NAME: !Ref S3Bucket
+          BEDROCK_EMBEDDING_MODEL: "amazon.titan-embed-text-v1"
+          BEDROCK_LLM_MODEL: "anthropic.claude-3-sonnet-20240229-v1:0"
+          OPENSEARCH_HOST: !Sub "${OpenSearchEndpoint}.${AWS::Region}.es.amazonaws.com"
+          OPENSEARCH_INDEX: "documents"
       Policies:
         - S3ReadPolicy:
-            BucketName: !Ref BucketName
-        # Add OpenSearch permissions as needed
+            BucketName: !Ref S3Bucket
+        - Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - es:ESHttpGet
+                  - es:ESHttpPost
+                Resource: !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*"
+
       Events:
         QAApi:
           Type: Api
           Properties:
             Path: /qa
             Method: post
+
   SummarizeLambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: src/extract_loader/summarize.lambda_handler
-      CodeUri: .
+      Handler: summarizer.lambda_handler
+      CodeUri: src/summarizer_handler/
       Runtime: python3.11
       Timeout: 30
       Environment:
         Variables:
-          BUCKET_NAME: !Ref BucketName
+          BUCKET_NAME: !Ref S3Bucket
+          BEDROCK_EMBEDDING_MODEL: "amazon.titan-embed-text-v1"
+          BEDROCK_LLM_MODEL: "anthropic.claude-3-sonnet-20240229-v1:0"
+          OPENSEARCH_HOST: !Sub "${OpenSearchEndpoint}.${AWS::Region}.es.amazonaws.com"
+          OPENSEARCH_INDEX: "documents"
       Policies:
         - S3ReadPolicy:
-            BucketName: !Ref BucketName
+            BucketName: !Ref S3Bucket
+        - Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - es:ESHttpGet
+                  - es:ESHttpPost
+                Resource: !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*"
+
       Events:
         SummarizeApi:
           Type: Api
@@ -146,3 +250,10 @@ Outputs:
   UploadApiUrl:
     Description: "API Endpoint"
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/generate-upload-url"
+  S3BucketName:
+    Description: "S3 Bucket Name"
+    Value: !Ref S3Bucket
+  OpenSearchEndpoint:
+    Description: "OpenSearch Domain Endpoint"
+    Value: !Sub "https://${OpenSearchEndpoint}.${AWS::Region}.es.amazonaws.com"
+

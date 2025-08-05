@@ -1,16 +1,28 @@
-from opensearchpy import OpenSearch
+from opensearchpy import OpenSearch, RequestsHttpConnection
+from requests_aws4auth import AWS4Auth
 import os
+import boto3
 
-OPENSEARCH_HOST = os.environ.get("OPENSEARCH_HOST", "your-opensearch-endpoint")
-OPENSEARCH_INDEX = os.environ.get("OPENSEARCH_INDEX", "documents")
-OPENSEARCH_USER = os.environ.get("OPENSEARCH_USER", "admin")
-OPENSEARCH_PASS = os.environ.get("OPENSEARCH_PASS", "admin")
+region = os.environ.get("AWS_REGION") 
+service = 'es'
+
+# Get credentials from the Lambda role (or IAM user if running locally)
+credentials = boto3.Session().get_credentials()
+awsauth = AWS4Auth(credentials.access_key,
+                   credentials.secret_key,
+                   region,
+                   service,
+                   session_token=credentials.token)
+
+OPENSEARCH_HOST = os.environ.get("OPENSEARCH_HOST")
+OPENSEARCH_INDEX = os.environ.get("OPENSEARCH_INDEX")
 
 client = OpenSearch(
     hosts=[{"host": OPENSEARCH_HOST, "port": 443}],
-    http_auth=(OPENSEARCH_USER, OPENSEARCH_PASS),
+    http_auth=awsauth,
     use_ssl=True,
     verify_certs=True,
+    connection_class=RequestsHttpConnection
 )
 
 def create_index():

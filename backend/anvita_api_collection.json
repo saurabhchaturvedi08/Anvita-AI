@@ -1,0 +1,140 @@
+{
+    "info": {
+        "name": "Anvita AI APIs",
+        "description": "Complete API collection for Anvita document AI pipeline",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "1. Generate Upload URL",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"fileName\": \"test-document.pdf\",\n    \"fileType\": \"application/pdf\",\n    \"fileSize\": 1024000\n}"
+                },
+                "url": {
+                    "raw": "https://8ived836pl.execute-api.ap-south-1.amazonaws.com/Prod/generate-upload-url",
+                    "protocol": "https",
+                    "host": ["8ived836pl", "execute-api", "ap-south-1", "amazonaws", "com"],
+                    "path": ["Prod", "generate-upload-url"]
+                },
+                "description": "Step 1: Get a presigned URL for uploading files to S3"
+            }
+        },
+        {
+            "name": "2. Upload File to S3",
+            "request": {
+                "method": "PUT",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/pdf"
+                    }
+                ],
+                "body": {
+                    "mode": "file",
+                    "file": {
+                        "src": "{{file_path}}"
+                    }
+                },
+                "url": {
+                    "raw": "{{presigned_url}}",
+                    "protocol": "https",
+                    "host": ["{{presigned_url}}"],
+                    "path": []
+                },
+                "description": "Step 2: Upload file using the presigned URL from step 1"
+            }
+        },
+        {
+            "name": "3. Test Q&A API",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"file_key\": \"{{file_key}}\",\n    \"question\": \"What is this document about?\"\n}"
+                },
+                "url": {
+                    "raw": "https://8ived836pl.execute-api.ap-south-1.amazonaws.com/Prod/qa",
+                    "protocol": "https",
+                    "host": ["8ived836pl", "execute-api", "ap-south-1", "amazonaws", "com"],
+                    "path": ["Prod", "qa"]
+                },
+                "description": "Step 3: Ask questions about the uploaded document"
+            }
+        },
+        {
+            "name": "4. Test Summarize API",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "https://8ived836pl.execute-api.ap-south-1.amazonaws.com/Prod/summarize?file_key={{file_key}}",
+                    "protocol": "https",
+                    "host": ["8ived836pl", "execute-api", "ap-south-1", "amazonaws", "com"],
+                    "path": ["Prod", "summarize"],
+                    "query": [
+                        {
+                            "key": "file_key",
+                            "value": "{{file_key}}"
+                        }
+                    ]
+                },
+                "description": "Step 4: Get a summary of the uploaded document"
+            }
+        },
+        {
+            "name": "5. Test Manual Embedding",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"file_key\": \"{{file_key}}\"\n}"
+                },
+                "url": {
+                    "raw": "https://8ived836pl.execute-api.ap-south-1.amazonaws.com/Prod/embed",
+                    "protocol": "https",
+                    "host": ["8ived836pl", "execute-api", "ap-south-1", "amazonaws", "com"],
+                    "path": ["Prod", "embed"]
+                },
+                "description": "Step 5: Manually trigger vector embedding for the document"
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "file_key",
+            "value": "uploads/your-file-key-here.pdf",
+            "description": "The file key returned from the upload URL generation"
+        },
+        {
+            "key": "presigned_url",
+            "value": "https://your-presigned-url-here",
+            "description": "The presigned URL returned from step 1"
+        },
+        {
+            "key": "file_path",
+            "value": "C:\\path\\to\\your\\file.pdf",
+            "description": "Path to the file you want to upload"
+        }
+    ]
+}
