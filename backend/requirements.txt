@@ -8,3 +8,4 @@ textract
 opensearch-py
 botocore
 requests-aws4auth
+chromadb

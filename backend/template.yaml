@@ -16,13 +16,7 @@ Parameters:
     Type: String
     # Supported: PDF, DOCX, DOC, TXT, RTF, ODT
     Default: image/jpeg,image/png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,text/plain,application/rtf,application/vnd.oasis.opendocument.text
-  OpenSearchDomainName:
-    Type: String
-  OpenSearchEndpoint:
-    Type: String
-  OpenSearchIndex:
-    Type: String
-    Default: "documents"
+
 
 Resources:
   # S3 Bucket for file storage
@@ -41,35 +35,6 @@ Resources:
     #         AllowedMethods: [GET, PUT, POST, DELETE, HEAD]
     #         AllowedOrigins: ['*']
     #         MaxAge: 3000
-
-  # # OpenSearch Domain for Vector Storage
-  # OpenSearchDomain:
-    # Type: AWS::OpenSearchService::Domain
-    # Properties:
-    #   DomainName: !Ref OpenSearchDomainName
-    #   EngineVersion: "OpenSearch_1.0"
-    #   ClusterConfig:
-    #     InstanceType: "t3.small.elasticsearch"
-    #     InstanceCount: 1
-    #   EBSOptions:
-    #     EBSEnabled: true
-    #     VolumeType: "gp2"
-    #     VolumeSize: 10
-    #   AccessPolicies:
-    #     Version: "2012-10-17"
-    #     Statement:
-    #       - Effect: Allow
-    #         Principal:
-    #           AWS: "*"
-    #         Action: "es:*"
-    #         Resource: !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*"
-    #   EncryptionAtRestOptions:
-    #     Enabled: true
-    #   NodeToNodeEncryptionOptions:
-    #     Enabled: true
-    #   DomainEndpointOptions:
-    #     EnforceHTTPS: true
-    #     TLSSecurityPolicy: "Policy-Min-TLS-1-0-2019-07"
 
   S3DocumentUploadFunction:
     Type: AWS::Serverless::Function
@@ -101,7 +66,6 @@ Resources:
       Environment:
         Variables:
           BUCKET_NAME: !Ref S3Bucket
-          OPENSEARCH_HOST: !Sub "${OpenSearchEndpoint}.${AWS::Region}.es.amazonaws.com"
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref S3Bucket
@@ -112,7 +76,6 @@ Resources:
                 - es:ESHttpPost
                 - es:ESHttpPut
                 - es:ESHttpDelete
-              Resource: !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*"
 
       # Layers:
       #   # Tesseract OCR Lambda Layer (region-agnostic)
@@ -153,20 +116,9 @@ Resources:
           BUCKET_NAME: !Ref S3Bucket
           BEDROCK_EMBEDDING_MODEL: "amazon.titan-embed-text-v1"
           BEDROCK_LLM_MODEL: "anthropic.claude-3-sonnet-20240229-v1:0"
-          OPENSEARCH_HOST: !Sub "${OpenSearchEndpoint}.${AWS::Region}.es.amazonaws.com"
-          OPENSEARCH_INDEX: "documents"
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref S3Bucket
-        - Statement:
-            - Effect: Allow
-              Action:
-                - bedrock:InvokeModel
-                - es:ESHttpGet
-                - es:ESHttpPost
-                - es:ESHttpPut
-                - es:ESHttpDelete
-              Resource: !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*"
 
       # Events:
       #   S3TextUpload:
@@ -194,19 +146,9 @@ Resources:
           BUCKET_NAME: !Ref S3Bucket
           BEDROCK_EMBEDDING_MODEL: "amazon.titan-embed-text-v1"
           BEDROCK_LLM_MODEL: "anthropic.claude-3-sonnet-20240229-v1:0"
-          OPENSEARCH_HOST: !Sub "${OpenSearchEndpoint}.${AWS::Region}.es.amazonaws.com"
-          OPENSEARCH_INDEX: "documents"
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref S3Bucket
-        - Statement:
-              - Effect: Allow
-                Action:
-                  - bedrock:InvokeModel
-                  - es:ESHttpGet
-                  - es:ESHttpPost
-                Resource: !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*"
-
       Events:
         QAApi:
           Type: Api
@@ -226,18 +168,9 @@ Resources:
           BUCKET_NAME: !Ref S3Bucket
           BEDROCK_EMBEDDING_MODEL: "amazon.titan-embed-text-v1"
           BEDROCK_LLM_MODEL: "anthropic.claude-3-sonnet-20240229-v1:0"
-          OPENSEARCH_HOST: !Sub "${OpenSearchEndpoint}.${AWS::Region}.es.amazonaws.com"
-          OPENSEARCH_INDEX: "documents"
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref S3Bucket
-        - Statement:
-              - Effect: Allow
-                Action:
-                  - bedrock:InvokeModel
-                  - es:ESHttpGet
-                  - es:ESHttpPost
-                Resource: !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*"
 
       Events:
         SummarizeApi:
@@ -253,7 +186,4 @@ Outputs:
   S3BucketName:
     Description: "S3 Bucket Name"
     Value: !Ref S3Bucket
-  OpenSearchEndpoint:
-    Description: "OpenSearch Domain Endpoint"
-    Value: !Sub "https://${OpenSearchEndpoint}.${AWS::Region}.es.amazonaws.com"
 

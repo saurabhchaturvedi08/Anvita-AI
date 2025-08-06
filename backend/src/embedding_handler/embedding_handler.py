@@ -1,5 +1,3 @@
-# File: src/embedding_handler/embedding_handler.py
-
 import boto3
 import json
 import os
