@@ -14,28 +14,10 @@ Parameters:
     Default: 10
   AllowedFileTypes:
     Type: String
-    # Supported: PDF, DOCX, DOC, TXT, RTF, ODT
     Default: image/jpeg,image/png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,text/plain,application/rtf,application/vnd.oasis.opendocument.text
 
 
 Resources:
-  # S3 Bucket for file storage
-  # S3Bucket:
-    # Type: AWS::S3::Bucket
-    # Properties:
-    #   BucketName: !Ref BucketName
-    #   PublicAccessBlockConfiguration:
-    #     BlockPublicAcls: true
-    #     BlockPublicPolicy: true
-    #     IgnorePublicAcls: true
-    #     RestrictPublicBuckets: true
-    #   CorsConfiguration:
-    #     CorsRules:
-    #       - AllowedHeaders: ['*']
-    #         AllowedMethods: [GET, PUT, POST, DELETE, HEAD]
-    #         AllowedOrigins: ['*']
-    #         MaxAge: 3000
-
   S3DocumentUploadFunction:
     Type: AWS::Serverless::Function
     Properties:

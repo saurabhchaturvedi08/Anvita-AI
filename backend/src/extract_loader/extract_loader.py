@@ -6,10 +6,10 @@ import fitz  # PyMuPDF
 import pytesseract
 from PIL import Image
 import docx
-# import textract
+import textract
 
 # Set Tesseract binary path for Lambda Layer
-# pytesseract.pytesseract.tesseract_cmd = "/opt/bin/tesseract"
+pytesseract.pytesseract.tesseract_cmd = "/opt/bin/tesseract"
 
 s3 = boto3.client('s3')
 
@@ -28,23 +28,23 @@ def extract_text_from_file(bucket, file_key):
                 page_text = page.get_text()
                 if page_text and page_text.strip():
                     text += page_text
-                # else:
-                #     # Fallback to OCR using Tesseract
-                #     pix = page.get_pixmap()
-                #     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                #     ocr_text = pytesseract.image_to_string(img)
-                #     text += ocr_text
+                else:
+                    # Fallback to OCR using Tesseract
+                    pix = page.get_pixmap()
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    ocr_text = pytesseract.image_to_string(img)
+                    text += ocr_text
         elif ext == '.docx':
             doc = docx.Document(tmp_file.name)
             text = '\n'.join([para.text for para in doc.paragraphs])
         elif ext == '.txt':
             text = tmp_file.read().decode('utf-8')
-        # else:
-        #     # Fallback to textract for other types (e.g., .doc, .rtf, .odt, etc.)
-        #     try:
-        #         text = textract.process(tmp_file.name).decode('utf-8')
-        #     except Exception as e:
-        #         text = f"[Error extracting text: {str(e)}]"
+        else:
+            # Fallback to textract for other types (e.g., .doc, .rtf, .odt, etc.)
+            try:
+                text = textract.process(tmp_file.name).decode('utf-8')
+            except Exception as e:
+                text = f"[Error extracting text: {str(e)}]"
 
     s3.put_object(
         Bucket=bucket,
