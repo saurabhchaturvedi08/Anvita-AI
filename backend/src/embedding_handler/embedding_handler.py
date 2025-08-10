@@ -3,55 +3,54 @@ import json
 import os
 import uuid
 import chromadb
-from chromadb.config import Settings
+import requests
 
 s3 = boto3.client('s3')
 BUCKET_NAME = os.environ.get('BUCKET_NAME')
 
-# Initialize ChromaDB client in /tmp (ephemeral Lambda storage)
+# ChromaDB persistent storage in Lambda's /tmp
 CHROMA_PATH = "/tmp/chromadb"
 chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
-
-# Ensure collection exists
 collection = chroma_client.get_or_create_collection(name="documents")
 
-# Bedrock setup
-bedrock = boto3.client('bedrock-runtime')
-BEDROCK_EMBEDDING_MODEL = os.environ.get("BEDROCK_EMBEDDING_MODEL", "amazon.titan-embed-text-v1")
+# Gemini API setup
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+GEMINI_EMBED_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent"
 
 def chunk_text(text, max_tokens=300):
-    """
-    Splits a long string into smaller chunks (~max_tokens words).
-    Approximate: assumes 1 word ~ 1 token.
-    """
     words = text.split()
-    chunks = [
+    return [
         " ".join(words[i:i+max_tokens])
         for i in range(0, len(words), max_tokens)
     ]
-    return chunks
 
-def get_embedding(text: str) -> list[float]:
+def get_embeddings_for_chunks(chunks):
     """
-    Generate an embedding for the given text using Amazon Bedrock (Titan model).
-    Returns the embedding as a list of floats.
+    Calls Gemini's embedContent for multiple chunks in one API request.
+    Returns a list of embeddings (one per chunk).
     """
     try:
-        body = json.dumps({ "inputText": text })
+        payload = {
+            "model": "models/gemini-embedding-001",
+            "content": [{"parts": [{"text": chunk}]} for chunk in chunks]
+        }
 
-        response = bedrock.invoke_model(
-            modelId=BEDROCK_EMBEDDING_MODEL,
-            body=body,
-            contentType="application/json"
+        response = requests.post(
+            GEMINI_EMBED_URL,
+            headers={
+                "x-goog-api-key": GEMINI_API_KEY,
+                "Content-Type": "application/json"
+            },
+            json=payload
         )
+        response.raise_for_status()
 
-        response_body = json.loads(response["body"].read())
-
-        # Titan returns {"embedding": [...], "inputTextTokenCount": ...}
-        return response_body["embedding"]
+        data = response.json()
+        # Gemini returns embeddings under embeddings[] for each input
+        return [item["embedding"] for item in data.get("embedding", [])]
 
     except Exception as e:
-        raise RuntimeError(f"Failed to generate embedding: {str(e)}")
+        raise RuntimeError(f"Gemini embedding API failed: {str(e)}")
 
 def lambda_handler(event, context):
     try:
@@ -66,31 +65,22 @@ def lambda_handler(event, context):
         extracted_text = obj["Body"].read().decode('utf-8')
 
         chunks = chunk_text(extracted_text, max_tokens=300)
+        embeddings = get_embeddings_for_chunks(chunks)
 
         chunks_ingested = 0
-        for i, chunk in enumerate(chunks):
-            try:
-                embedding = get_embedding(chunk)
-
-                # Store in ChromaDB
-                metadata = {
-                    "file_key": file_key,
-                    "chunk_id": i,
-                    "doc_id": doc_id
-                }
-
-                collection.add(
-                    ids=[f"{doc_id}_{i}"],
-                    documents=[chunk],
-                    embeddings=[embedding],
-                    metadatas=[metadata]
-                )
-
-                chunks_ingested += 1
-
-            except Exception as e:
-                print(f"Error processing chunk {i}: {str(e)}")
-                continue
+        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+            metadata = {
+                "file_key": file_key,
+                "chunk_id": i,
+                "doc_id": doc_id
+            }
+            collection.add(
+                ids=[f"{doc_id}_{i}"],
+                documents=[chunk],
+                embeddings=[embedding],
+                metadatas=[metadata]
+            )
+            chunks_ingested += 1
 
         return {
             "statusCode": 200,
@@ -99,7 +89,7 @@ def lambda_handler(event, context):
                 "file_key": file_key,
                 "chunks_ingested": chunks_ingested,
                 "total_chunks": len(chunks),
-                "message": "Text embedded and vectors stored in ChromaDB"
+                "message": "Text embedded with Gemini and stored in ChromaDB"
             })
         }
 
@@ -108,6 +98,6 @@ def lambda_handler(event, context):
             "statusCode": 500,
             "body": json.dumps({
                 "error": str(e),
-                "message": "Failed to embed text and create vectors"
+                "message": "Failed to embed text and store vectors"
             })
         }

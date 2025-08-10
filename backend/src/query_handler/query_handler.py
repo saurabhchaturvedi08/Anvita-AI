@@ -1,10 +1,7 @@
 import boto3
 import json
 import os
-from utils.embedding import get_embedding
-from utils.prompts import get_qa_prompt
 import chromadb
-from chromadb.config import Settings
 
 s3 = boto3.client('s3')
 bedrock = boto3.client('bedrock-runtime')
@@ -16,6 +13,43 @@ BUCKET_NAME = os.environ.get('BUCKET_NAME')
 CHROMA_PATH = "/tmp/chromadb"
 chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
 collection = chroma_client.get_or_create_collection(name="documents")
+
+# Bedrock setup
+bedrock = boto3.client('bedrock-runtime')
+BEDROCK_EMBEDDING_MODEL = os.environ.get("BEDROCK_EMBEDDING_MODEL", "amazon.titan-embed-text-v1")
+
+def get_embedding(text: str) -> list[float]:
+    """
+    Generate an embedding for the given text using Amazon Bedrock (Titan model).
+    Returns the embedding as a list of floats.
+    """
+    try:
+        body = json.dumps({ "inputText": text })
+
+        response = bedrock.invoke_model(
+            modelId=BEDROCK_EMBEDDING_MODEL,
+            body=body,
+            contentType="application/json"
+        )
+
+        response_body = json.loads(response["body"].read())
+
+        # Titan returns {"embedding": [...], "inputTextTokenCount": ...}
+        return response_body["embedding"]
+
+    except Exception as e:
+        raise RuntimeError(f"Failed to generate embedding: {str(e)}")
+
+def get_qa_prompt(user_query, context_chunks):
+    context_text = "\n\n".join(context_chunks)
+    return f"""Human: Answer the question below using only the information provided.
+
+    Context:
+    {context_text}
+
+    Question: {user_query}
+
+    Assistant:"""
 
 def call_bedrock_llm(prompt, max_tokens=512):
     """Call Bedrock LLM for text generation"""

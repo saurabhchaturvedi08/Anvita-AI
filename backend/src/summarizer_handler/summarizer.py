@@ -1,7 +1,6 @@
 import boto3
 import json
 import os
-from utils.prompts import get_summary_prompt
 
 s3 = boto3.client('s3')
 bedrock = boto3.client('bedrock-runtime')
@@ -26,6 +25,14 @@ def call_bedrock_llm(prompt, max_tokens=1024):
     )
     model_output = json.loads(response['body'].read())
     return model_output.get('completion', '').strip()
+
+def get_summary_prompt(transcript):
+    return f"""Human: You are an expert meeting assistant. Please summarize the following meeting transcript in a concise and clear format. Highlight key discussion points, action items, and decisions made.
+
+    Meeting Transcript:
+    {transcript}
+
+    Assistant:"""
 
 def lambda_handler(event, context):
     """Lambda handler for document summarization"""
