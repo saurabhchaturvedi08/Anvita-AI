@@ -9,7 +9,7 @@ Globals:
       Variables:
         BUCKET_NAME: !Ref S3Bucket
         GEMINI_API_KEY: !Ref GeminiApiKey
-        CHROMADB_DIR: "/tmp/chromadb" # local storage path in Lambda
+        CHROMADB_DIR: "/tmp/chromadb"
 
 Parameters:
   S3Bucket:
@@ -45,50 +45,51 @@ Resources:
             Path: /generate-upload-url
             Method: post
 
-ExtractTextFunction:
-  Type: AWS::Serverless::Function
-  Properties:
-    Handler: extract_loader.lambda_handler
-    CodeUri: src/extract_loader/
-    Runtime: python3.11
-    Timeout: 120
-    Policies:
-      - S3CrudPolicy:
-          BucketName: !Ref S3Bucket
-      - AWSLambdaBasicExecutionRole
-      - Statement:
-          Effect: Allow
-          Action:
-            - lambda:InvokeFunction
-          Resource: !GetAtt EmbedTextFunction.Arn
-    Events:
-      FileUploaded:
-        Type: S3
-        Properties:
-          Bucket: !Ref S3Bucket
-          Events: s3:ObjectCreated:*
+  ExtractTextFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: extract_loader.lambda_handler
+      CodeUri: src/extract_loader/
+      Timeout: 120
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref S3Bucket
+        - Statement:
+            Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource: !GetAtt EmbedTextFunction.Arn
+      Events:
+        ExtractApi:
+          Type: Api
+          Properties:
+            Path: /extract
+            Method: post
 
-EmbedTextFunction:
-  Type: AWS::Serverless::Function
-  Properties:
-    Handler: embedding_handler.lambda_handler
-    CodeUri: src/embedding_handler/
-    Runtime: python3.11
-    Timeout: 120
-    Environment:
-      Variables:
-        GEMINI_EMBEDDING_MODEL: "models/gemini-embedding-001"
-    Policies:
-      - S3CrudPolicy:
-          BucketName: !Ref S3Bucket
-      - AWSLambdaBasicExecutionRole
+  EmbedTextFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: embedding_handler.lambda_handler
+      CodeUri: src/embedding_handler/
+      Timeout: 120
+      Environment:
+        Variables:
+          GEMINI_EMBEDDING_MODEL: "models/gemini-embedding-001"
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref S3Bucket
+      Events:
+        EmbedApi:
+          Type: Api
+          Properties:
+            Path: /embed
+            Method: post
 
   QALambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: query_handler.lambda_handler
       CodeUri: src/query_handler/
-      Runtime: python3.11
       Timeout: 120
       Environment:
         Variables:
@@ -108,7 +109,6 @@ EmbedTextFunction:
     Properties:
       Handler: summarizer.lambda_handler
       CodeUri: src/summarizer_handler/
-      Runtime: python3.11
       Timeout: 120
       Environment:
         Variables:
@@ -127,6 +127,12 @@ Outputs:
   UploadApiUrl:
     Description: "Upload API Endpoint"
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/generate-upload-url"
+  ExtractApiUrl:
+    Description: "Extract API Endpoint"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/extract"
+  EmbedApiUrl:
+    Description: "Embed API Endpoint"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/embed"
   QAApiUrl:
     Description: "QA API Endpoint"
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/qa"
