@@ -4,6 +4,7 @@ import os
 import uuid
 import chromadb
 import requests
+import math
 
 s3 = boto3.client('s3')
 BUCKET_NAME = os.environ.get('BUCKET_NAME')
@@ -17,22 +18,23 @@ collection = chroma_client.get_or_create_collection(name="documents")
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 GEMINI_EMBED_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent"
 
-def chunk_text(text, max_tokens=300):
-    words = text.split()
-    return [
-        " ".join(words[i:i+max_tokens])
-        for i in range(0, len(words), max_tokens)
-    ]
-
-def get_embeddings_for_chunks(chunks):
+def chunk_text_by_tokens(text, max_tokens=1800):
     """
-    Calls Gemini's embedContent for multiple chunks in one API request.
-    Returns a list of embeddings (one per chunk).
+    Splits text into chunks that are under the token limit.
+    Roughly assumes 1 token ~ 4 characters.
+    """
+    max_chars = max_tokens * 4
+    return [text[i:i+max_chars] for i in range(0, len(text), max_chars)]
+
+def get_embedding(text):
+    """
+    Calls Gemini's embedContent for a single chunk.
+    Returns the embedding vector.
     """
     try:
         payload = {
             "model": "models/gemini-embedding-001",
-            "content": [{"parts": [{"text": chunk}]} for chunk in chunks]
+            "content": {"parts": [{"text": text}]}
         }
 
         response = requests.post(
@@ -46,8 +48,7 @@ def get_embeddings_for_chunks(chunks):
         response.raise_for_status()
 
         data = response.json()
-        # Gemini returns embeddings under embeddings[] for each input
-        return [item["embedding"] for item in data.get("embedding", [])]
+        return data["embedding"]["values"]  # embedding vector
 
     except Exception as e:
         raise RuntimeError(f"Gemini embedding API failed: {str(e)}")
@@ -64,11 +65,13 @@ def lambda_handler(event, context):
         obj = s3.get_object(Bucket=bucket, Key=text_key)
         extracted_text = obj["Body"].read().decode('utf-8')
 
-        chunks = chunk_text(extracted_text, max_tokens=300)
-        embeddings = get_embeddings_for_chunks(chunks)
+        # Token-safe chunking
+        chunks = chunk_text_by_tokens(extracted_text, max_tokens=1800)
 
+        # Sequentially embed each chunk
         chunks_ingested = 0
-        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+        for i, chunk in enumerate(chunks):
+            embedding = get_embedding(chunk)
             metadata = {
                 "file_key": file_key,
                 "chunk_id": i,

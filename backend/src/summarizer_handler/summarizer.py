@@ -1,84 +1,105 @@
 import boto3
 import json
 import os
+import requests
+import chromadb
 
 s3 = boto3.client('s3')
-bedrock = boto3.client('bedrock-runtime')
 
-BEDROCK_LLM_MODEL = os.environ.get('BEDROCK_LLM_MODEL', 'anthropic.claude-3-sonnet-20240229-v1:0')
+# Environment variables
 BUCKET_NAME = os.environ.get('BUCKET_NAME')
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
-def call_bedrock_llm(prompt, max_tokens=1024):
-    """Call Bedrock LLM for text generation"""
-    response = bedrock.invoke_model(
-        modelId=BEDROCK_LLM_MODEL,
-        body=json.dumps({
-            "prompt": prompt,
-            "max_tokens_to_sample": max_tokens,
-            "temperature": 0.7,
-            "top_k": 250,
-            "top_p": 1.0,
-            "stop_sequences": ["\n\nHuman:"]
-        }),
-        contentType="application/json",
-        accept="application/json"
-    )
-    model_output = json.loads(response['body'].read())
-    return model_output.get('completion', '').strip()
+# Gemini 2.0 Flash endpoint
+GEMINI_GENERATE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
-def get_summary_prompt(transcript):
-    return f"""Human: You are an expert meeting assistant. Please summarize the following meeting transcript in a concise and clear format. Highlight key discussion points, action items, and decisions made.
+# ChromaDB setup
+CHROMA_PATH = "/tmp/chromadb"
+chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
+collection = chroma_client.get_or_create_collection(name="documents")
 
-    Meeting Transcript:
-    {transcript}
+def call_gemini_llm(prompt, max_tokens=2048):
+    """Call Gemini 2.0 Flash API for summarization."""
+    try:
+        response = requests.post(
+            GEMINI_GENERATE_URL,
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": GEMINI_API_KEY
+            },
+            json={
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": prompt}
+                        ]
+                    }
+                ],
+                "generationConfig": {
+                    "maxOutputTokens": max_tokens,
+                    "temperature": 0.7
+                }
+            }
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as e:
+        raise RuntimeError(f"Gemini API call failed: {str(e)}")
 
-    Assistant:"""
+def get_summary_prompt(chunks):
+    context_text = "\n\n".join(chunks)
+    return f"""You are an expert at summarizing any kind of content.
+Summarize the following text in a clear, concise, and well-structured manner.
+
+Highlight:
+- Main topics or themes
+- Important facts or insights
+- Any conclusions or implications
+
+Content:
+{context_text}
+"""
+
 
 def lambda_handler(event, context):
-    """Lambda handler for document summarization"""
+    """Lambda handler for document summarization using ChromaDB + Gemini"""
     try:
         # Get query parameters
-        query_params = event.get('queryStringParameters', {})
-        bucket = query_params.get('bucket', BUCKET_NAME)
+        query_params = event.get('queryStringParameters', {}) or {}
         file_key = query_params.get('file_key')
         
         if not file_key:
             return {
                 "statusCode": 400,
-                "body": json.dumps({
-                    "error": "Missing file_key parameter"
-                })
+                "body": json.dumps({"error": "Missing file_key parameter"})
             }
+
+        # Retrieve all chunks for this file from ChromaDB
+        results = collection.get(where={"file_key": file_key})
+        documents = results.get('documents', [])
         
-        # 1. Construct text file key from file key
-        text_key = file_key.replace("uploads/", "texts/").rsplit('.', 1)[0] + ".txt"
-        
-        # 2. Load extracted text from S3
-        try:
-            obj = s3.get_object(Bucket=bucket, Key=text_key)
-            extracted_text = obj['Body'].read().decode('utf-8')
-        except Exception as e:
+        if not documents:
             return {
                 "statusCode": 404,
                 "body": json.dumps({
-                    "error": f"Text file not found: {text_key}",
-                    "message": "Document may still be processing"
+                    "error": "No chunks found in ChromaDB for this file_key",
+                    "message": "Document may not have been processed yet"
                 })
             }
-        
-        # 3. Create summary prompt
-        prompt = get_summary_prompt(extracted_text)
-        
-        # 4. Generate summary using LLM
-        summary = call_bedrock_llm(prompt, max_tokens=1024)
-        
-        # 5. Return summary
+
+        # Create prompt from retrieved chunks
+        prompt = get_summary_prompt(documents)
+
+        # Generate summary via Gemini
+        summary = call_gemini_llm(prompt, max_tokens=2048)
+
         return {
             "statusCode": 200,
             "body": json.dumps({
                 "summary": summary,
                 "file_key": file_key,
-                "text_length": len(extracted_text),
+                "chunk_count": len(documents),
                 "summary_length": len(summary)
             })
         }
@@ -90,4 +111,4 @@ def lambda_handler(event, context):
                 "error": str(e),
                 "message": "Failed to generate summary"
             })
-        } 
+        }

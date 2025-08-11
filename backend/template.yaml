@@ -4,11 +4,20 @@ Transform: AWS::Serverless-2016-10-31
 Globals:
   Function:
     Runtime: python3.11
-    Timeout: 10
+    Timeout: 60
+    Environment:
+      Variables:
+        BUCKET_NAME: !Ref S3Bucket
+        GEMINI_API_KEY: !Ref GeminiApiKey
+        CHROMADB_DIR: "/tmp/chromadb" # local storage path in Lambda
 
 Parameters:
   S3Bucket:
     Type: String
+  GeminiApiKey:
+    Type: String
+    NoEcho: true
+    Description: "Google Gemini API key (stored in Lambda environment variable)"
   MaxFileSizeMB:
     Type: Number
     Default: 10
@@ -16,16 +25,14 @@ Parameters:
     Type: String
     Default: image/jpeg,image/png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,text/plain,application/rtf,application/vnd.oasis.opendocument.text
 
-
 Resources:
   S3DocumentUploadFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.lambda_handler
-      CodeUri: src/upload_handler/ 
+      CodeUri: src/upload_handler/
       Environment:
         Variables:
-          BUCKET_NAME: !Ref S3Bucket
           MAX_FILE_SIZE_MB: !Ref MaxFileSizeMB
           ALLOWED_FILE_TYPES: !Ref AllowedFileTypes
       Policies:
@@ -38,83 +45,43 @@ Resources:
             Path: /generate-upload-url
             Method: post
 
-  ExtractTextFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: extract_loader.lambda_handler
-      CodeUri: src/extract_loader/
-      Runtime: python3.11
-      Timeout: 30
-      Environment:
-        Variables:
-          BUCKET_NAME: !Ref S3Bucket
-      Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref S3Bucket
-        - Statement:
-            - Effect: Allow
-              Action:
-                - es:ESHttpGet
-                - es:ESHttpPost
-                - es:ESHttpPut
-                - es:ESHttpDelete
+ExtractTextFunction:
+  Type: AWS::Serverless::Function
+  Properties:
+    Handler: extract_loader.lambda_handler
+    CodeUri: src/extract_loader/
+    Runtime: python3.11
+    Timeout: 120
+    Policies:
+      - S3CrudPolicy:
+          BucketName: !Ref S3Bucket
+      - AWSLambdaBasicExecutionRole
+      - Statement:
+          Effect: Allow
+          Action:
+            - lambda:InvokeFunction
+          Resource: !GetAtt EmbedTextFunction.Arn
+    Events:
+      FileUploaded:
+        Type: S3
+        Properties:
+          Bucket: !Ref S3Bucket
+          Events: s3:ObjectCreated:*
 
-      # Layers:
-      #   # Tesseract OCR Lambda Layer (region-agnostic)
-      #   - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:tesseract-ocr:1"
-      # Events:
-      #   S3DocumentUpload:
-      #     Type: S3
-      #     Properties:
-      #       Bucket: !Ref S3Bucket
-      #       Events: s3:ObjectCreated:*
-      #       Filter:
-      #         S3Key:
-      #           Rules:
-      #             - Name: prefix
-      #               Value: uploads/
-      #             - Name: suffix
-      #               Value: .pdf
-      #             - Name: suffix
-      #               Value: .docx
-      #             - Name: suffix
-      #               Value: .doc
-      #             - Name: suffix
-      #               Value: .txt
-      #             - Name: suffix
-      #               Value: .rtf
-      #             - Name: suffix
-      #               Value: .odt
-
-  EmbedTextFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: embedding_handler.lambda_handler
-      CodeUri: src/embedding_handler/
-      Runtime: python3.11
-      Timeout: 60
-      Environment:
-        Variables:
-          BUCKET_NAME: !Ref S3Bucket
-          BEDROCK_EMBEDDING_MODEL: "amazon.titan-embed-text-v1"
-          BEDROCK_LLM_MODEL: "anthropic.claude-3-sonnet-20240229-v1:0"
-      Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref S3Bucket
-
-      # Events:
-      #   S3TextUpload:
-      #     Type: S3
-      #     Properties:
-      #       Bucket: !Ref S3Bucket
-      #       Events: s3:ObjectCreated:*
-      #       Filter:
-      #         S3Key:
-      #           Rules:
-      #             - Name: prefix
-      #               Value: texts/
-      #             - Name: suffix
-      #               Value: .txt
+EmbedTextFunction:
+  Type: AWS::Serverless::Function
+  Properties:
+    Handler: embedding_handler.lambda_handler
+    CodeUri: src/embedding_handler/
+    Runtime: python3.11
+    Timeout: 120
+    Environment:
+      Variables:
+        GEMINI_EMBEDDING_MODEL: "models/gemini-embedding-001"
+    Policies:
+      - S3CrudPolicy:
+          BucketName: !Ref S3Bucket
+      - AWSLambdaBasicExecutionRole
 
   QALambdaFunction:
     Type: AWS::Serverless::Function
@@ -122,12 +89,10 @@ Resources:
       Handler: query_handler.lambda_handler
       CodeUri: src/query_handler/
       Runtime: python3.11
-      Timeout: 30
+      Timeout: 120
       Environment:
         Variables:
-          BUCKET_NAME: !Ref S3Bucket
-          BEDROCK_EMBEDDING_MODEL: "amazon.titan-embed-text-v1"
-          BEDROCK_LLM_MODEL: "anthropic.claude-3-sonnet-20240229-v1:0"
+          GEMINI_LLM_MODEL: "models/gemini-2.0-flash"
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref S3Bucket
@@ -144,28 +109,30 @@ Resources:
       Handler: summarizer.lambda_handler
       CodeUri: src/summarizer_handler/
       Runtime: python3.11
-      Timeout: 30
+      Timeout: 120
       Environment:
         Variables:
-          BUCKET_NAME: !Ref S3Bucket
-          BEDROCK_EMBEDDING_MODEL: "amazon.titan-embed-text-v1"
-          BEDROCK_LLM_MODEL: "anthropic.claude-3-sonnet-20240229-v1:0"
+          GEMINI_LLM_MODEL: "models/gemini-2.0-flash"
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref S3Bucket
-
       Events:
         SummarizeApi:
           Type: Api
           Properties:
             Path: /summarize
-            Method: get
+            Method: post
 
 Outputs:
   UploadApiUrl:
-    Description: "API Endpoint"
+    Description: "Upload API Endpoint"
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/generate-upload-url"
+  QAApiUrl:
+    Description: "QA API Endpoint"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/qa"
+  SummarizeApiUrl:
+    Description: "Summarize API Endpoint"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/summarize"
   S3BucketName:
     Description: "S3 Bucket Name"
     Value: !Ref S3Bucket
-
