@@ -55,10 +55,15 @@ def extract_text_from_file(bucket, file_key):
 def lambda_handler(event, context):
     """Lambda handler triggered when files are uploaded to S3"""
     try:
-        # S3 event structure
-        record = event['Records'][0]
-        bucket = record['s3']['bucket']['name']
-        file_key = record['s3']['object']['key']
+        body = json.loads(event["body"])
+        bucket = body.get("bucket") or os.environ.get("BUCKET_NAME")
+        file_key = body.get("fileKey")
+
+        if not bucket or not file_key:
+            return {
+                "statusCode": 400,
+                "body": json.dumps({"message": "Missing bucket or fileKey"})
+            }
         
         # Extract text from uploaded file
         text_key = extract_text_from_file(bucket, file_key)
