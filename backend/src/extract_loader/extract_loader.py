@@ -2,15 +2,14 @@ import os
 import json
 import boto3
 import tempfile
-# import fitz  # PyMuPDF
+import fitz
 from PyPDF2 import PdfReader
 import pytesseract
 from PIL import Image
 import docx
-# import textract
 
 # Set Tesseract binary path for Lambda Layer
-# pytesseract.pytesseract.tesseract_cmd = "/opt/bin/tesseract"
+pytesseract.pytesseract.tesseract_cmd = "/opt/bin/tesseract"
 
 s3 = boto3.client('s3')
 
@@ -27,21 +26,34 @@ def extract_text_from_file(bucket, file_key):
             try:
                 reader = PdfReader(tmp_file.name)
                 text = "\n".join(page.extract_text() or "" for page in reader.pages)
+
+                if not text.strip():
+                    text_parts = []
+                    pdf_doc = fitz.open(tmp_file.name)
+                    for page_num in range(len(pdf_doc)):
+                        page = pdf_doc[page_num]
+                        pix = page.get_pixmap()
+                        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                        text_parts.append(pytesseract.image_to_string(img))
+                    text = "\n".join(text_parts) or "[No text found in scanned PDF]"
             except Exception as e:
                 text = f"[Error extracting text from PDF: {str(e)}]"
-        
+
         elif ext == '.docx':
             try:
                 doc = docx.Document(tmp_file.name)
                 text = '\n'.join([para.text for para in doc.paragraphs])
             except Exception as e:
                 text = f"[Error extracting text from DOCX: {str(e)}]"
-        
+
         elif ext == '.txt':
             try:
                 text = tmp_file.read().decode('utf-8')
             except Exception as e:
                 text = f"[Error reading TXT: {str(e)}]"
+
+        else:
+            text = "[Unsupported file type]"
 
     s3.put_object(
         Bucket=bucket,
@@ -51,6 +63,7 @@ def extract_text_from_file(bucket, file_key):
     )
 
     return text_key
+
 
 def lambda_handler(event, context):
     """Lambda handler triggered when files are uploaded to S3"""
@@ -65,7 +78,6 @@ def lambda_handler(event, context):
                 "body": json.dumps({"message": "Missing bucket or fileKey"})
             }
         
-        # Extract text from uploaded file
         text_key = extract_text_from_file(bucket, file_key)
         
         return {
@@ -83,4 +95,4 @@ def lambda_handler(event, context):
                 "error": str(e),
                 "message": "Failed to extract text from file"
             })
-        } 
+        }
