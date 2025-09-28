@@ -10,6 +10,7 @@ import docx
 
 # Set Tesseract binary path for Lambda Layer
 pytesseract.pytesseract.tesseract_cmd = "/opt/bin/tesseract"
+# pytesseract.pytesseract.tesseract_cmd = "path to your tesseract exe in your machine"
 
 s3 = boto3.client('s3')
 
@@ -96,3 +97,14 @@ def lambda_handler(event, context):
                 "message": "Failed to extract text from file"
             })
         }
+
+
+## To test in your local
+# if __name__ == "__main__":
+#     mock_event = {
+#         "body": json.dumps({
+#             "bucket": "anvita-s3-bucket",
+#             "fileKey": "uploads/1755365257_7babd472-1423-40ce-b9dd-b0716290031e_example.pdf"
+#         })
+#     }
+#     print(lambda_handler(mock_event, None))
