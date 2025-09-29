@@ -48,18 +48,21 @@ def get_embedding(text):
         response.raise_for_status()
 
         data = response.json()
-        return data["embedding"]["values"]  # embedding vector
+        return data["embedding"]["values"] 
 
     except Exception as e:
         raise RuntimeError(f"Gemini embedding API failed: {str(e)}")
 
 def lambda_handler(event, context):
     try:
-        record = event['Records'][0]
-        bucket = record['s3']['bucket']['name']
-        text_key = record['s3']['object']['key']
+        # record = event['Records'][0]
+        # bucket = record['s3']['bucket']['name']
+        # text_key = record['s3']['object']['key']
 
-        file_key = text_key.replace('texts/', 'uploads/').replace('.txt', '')
+        # file_key = text_key.replace('texts/', 'uploads/').replace('.txt', '')
+        bucket = event["bucket"]
+        text_key = event["text_key"]
+        file_key = event["file_key"]
         doc_id = str(uuid.uuid4())
 
         obj = s3.get_object(Bucket=bucket, Key=text_key)
