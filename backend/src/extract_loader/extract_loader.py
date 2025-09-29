@@ -13,6 +13,9 @@ pytesseract.pytesseract.tesseract_cmd = "/opt/bin/tesseract"
 # pytesseract.pytesseract.tesseract_cmd = "path to your tesseract exe in your machine"
 
 s3 = boto3.client('s3')
+lambda_client = boto3.client('lambda')
+
+EMBEDDING_LAMBDA = os.environ.get("EMBEDDING_LAMBDA_NAME")
 
 def extract_text_from_file(bucket, file_key):
     ext = os.path.splitext(file_key)[1].lower()
@@ -80,6 +83,17 @@ def lambda_handler(event, context):
             }
         
         text_key = extract_text_from_file(bucket, file_key)
+
+        if EMBEDDING_LAMBDA:
+            lambda_client.invoke(
+                FunctionName=EMBEDDING_LAMBDA,
+                InvocationType="Event",
+                Payload=json.dumps({
+                    "bucket": bucket,
+                    "text_key": text_key,
+                    "file_key": file_key
+                })
+            )
         
         return {
             "statusCode": 200,
@@ -99,12 +113,12 @@ def lambda_handler(event, context):
         }
 
 
-## To test in your local
-# if __name__ == "__main__":
-#     mock_event = {
-#         "body": json.dumps({
-#             "bucket": "anvita-s3-bucket",
-#             "fileKey": "uploads/1755365257_7babd472-1423-40ce-b9dd-b0716290031e_example.pdf"
-#         })
-#     }
-#     print(lambda_handler(mock_event, None))
+# To test in your local
+if __name__ == "__main__":
+    mock_event = {
+        "body": json.dumps({
+            "bucket": "anvita-s3-bucket",
+            "fileKey": "uploads/1755365257_7babd472-1423-40ce-b9dd-b0716290031e_example.pdf"
+        })
+    }
+    print(lambda_handler(mock_event, None))
