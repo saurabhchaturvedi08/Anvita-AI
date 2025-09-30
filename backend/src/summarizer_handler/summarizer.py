@@ -14,7 +14,8 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 GEMINI_GENERATE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 # ChromaDB setup
-CHROMA_PATH = "/tmp/chromadb"
+# CHROMA_PATH = "/tmp/chromadb"
+CHROMA_PATH = os.environ.get("CHROMA_PATH", "./chromadb_local")
 chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
 collection = chroma_client.get_or_create_collection(name="documents")
 
