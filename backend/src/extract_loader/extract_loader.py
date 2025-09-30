@@ -87,7 +87,8 @@ def lambda_handler(event, context):
         if EMBEDDING_LAMBDA:
             lambda_client.invoke(
                 FunctionName=EMBEDDING_LAMBDA,
-                InvocationType="Event",
+                # InvocationType="Event",
+                InvocationType="RequestResponse",
                 Payload=json.dumps({
                     "bucket": bucket,
                     "text_key": text_key,

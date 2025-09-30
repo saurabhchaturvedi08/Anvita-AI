@@ -112,3 +112,16 @@ def lambda_handler(event, context):
                 "message": "Failed to generate summary"
             })
         }
+
+
+if __name__ == "__main__":
+    # Replace this with the file_key you used during embedding
+    test_event = {
+        "queryStringParameters": {
+            "file_key": "uploads/1755365257_7babd472-1423-40ce-b9dd-b0716290031e_example.pdf"
+        }
+    }
+
+    response = lambda_handler(test_event, None)
+    print("Summary========>")
+    print(json.dumps(json.loads(response["body"]), indent=2))
