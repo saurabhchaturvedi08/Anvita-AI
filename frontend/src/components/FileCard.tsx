@@ -108,7 +108,7 @@ export default function FileCard({ file, onViewSummary }: FileCardProps) {
         )}
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 flex-1 min-w-0">
             <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center">
               {getFileIcon()}
             </div>
@@ -131,7 +131,7 @@ export default function FileCard({ file, onViewSummary }: FileCardProps) {
             </div>
           </div>
           
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 flex-shrink-0 max-w-[40%] overflow-hidden">
             {getStatusIcon()}
             <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(file.status)}`}>
               {file.status.charAt(0).toUpperCase() + file.status.slice(1)}
