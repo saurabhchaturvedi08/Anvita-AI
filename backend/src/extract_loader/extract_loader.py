@@ -119,7 +119,7 @@ if __name__ == "__main__":
     mock_event = {
         "body": json.dumps({
             "bucket": "anvita-s3-bucket",
-            "fileKey": "uploads/1755365257_7babd472-1423-40ce-b9dd-b0716290031e_example.pdf"
+            "fileKey": "uploads/1754921165_fa63225d-ab4e-40c9-8beb-8378c3af52a8_test.pdf"
         })
     }
     print(lambda_handler(mock_event, None))
