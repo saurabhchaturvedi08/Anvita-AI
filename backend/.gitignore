@@ -5,5 +5,4 @@ __pycache__/
 *.pyc
 notes.txt
 venv/
-testing/
 notebook/
